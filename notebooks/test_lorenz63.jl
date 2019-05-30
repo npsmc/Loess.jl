@@ -1,13 +1,98 @@
-module Loess
+# -*- coding: utf-8 -*-
+# ---
+# jupyter:
+#   jupytext:
+#     formats: ipynb,jl:light
+#     text_representation:
+#       extension: .jl
+#       format_name: light
+#       format_version: '1.4'
+#       jupytext_version: 1.1.3
+#   kernelspec:
+#     display_name: Julia 1.1.1
+#     language: julia
+#     name: julia-1.1
+# ---
 
+using Random, Statistics
+using DifferentialEquations, Plots
+using Distributions, PDMats
 import Distances.euclidean
+Random.seed!(100);
 
-using Statistics
 
-export loess, predict
+# +
+""" 
 
-include("kd.jl")
+    lorenz63(du, u, p, t)
 
+Lorenz-63 dynamical model 
+```math
+\\begin{eqnarray}
+u̇₁(t) & = & p₁ ( u₂(t) - u₁(t)) \\\\
+u̇₂(t) & = & u₁ ( p₂ - u₃(t)) - u₂(t) \\\\
+u̇₃(t) & = & u₂(t)u₁(t) - p₃u₃(t)
+\\end{eqnarray}
+```
+"""
+function lorenz63(du, u, p, t)
+
+    du[1] = p[1] * (u[2] - u[1])
+    du[2] = u[1] * (p[2] - u[3]) - u[2]
+    du[3] = u[1] *  u[2] - p[3]  * u[3]
+
+end
+
+# +
+σ = 10.0
+ρ = 28.0
+β = 8.0/3.0
+
+u0    = [8.0;0.0;30.0]
+tspan = (0.0,10.0)
+prob  = ODEProblem(lorenz63, u0, tspan, [σ, ρ, β])
+sol   = solve(prob, reltol=1e-6, saveat=0.01)
+nt = length(sol.t)
+d  = MvNormal(zeros(3), ScalMat(3, 1.0))
+ε  = rand(3, nt)
+x  = hcat(sol.u...) .+ ε
+# -
+
+d  = MvNormal(zeros(3), ScalMat(3, 2.0))
+η  = rand( 3, nt) 
+y  = x .* NaN
+for i in 1:nt
+    if i % 8 == 0
+        y[:,i] .= x[:,i] .+ η[:,i]
+    end  
+end
+
+"""
+    tnormalize!(x,q)
+
+Default normalization procedure for predictors.
+
+This simply normalizes by the mean of everything between the 10th an 90th percentiles.
+
+Args:
+  `xs`: a matrix of predictors
+  `q`: cut the ends of at quantiles `q` and `1-q`
+
+Modifies:
+  `xs`
+"""
+function tnormalize!(xs::AbstractMatrix{T}, q::T=0.1) where T <: AbstractFloat
+    n, m = size(xs)
+    cut = ceil(Int, (q * n))
+    for j in 1:m
+        tmp = sort!(xs[:,j])
+        xs[:,j] ./= mean(tmp[cut+1:n-cut])
+    end
+    xs
+end
+
+# +
+include("../src/kd.jl")
 
 mutable struct LoessModel{T <: AbstractFloat}
     xs::AbstractMatrix{T} # An n by m predictor matrix containing n observations from m predictors
@@ -16,32 +101,20 @@ mutable struct LoessModel{T <: AbstractFloat}
     verts::Dict{Vector{T}, Int} # kd-tree vertexes mapped to indexes
     kdtree::KDTree{T}
 end
+# -
 
-"""
-    loess(xs, ys, normalize=true, span=0.75, degreee=2)
-
-Fit a loess model.
-
-Args:
-  `xs`: A `n` by `m` matrix with `n` observations from `m` independent predictors
-  `ys`: A length `n` response vector.
-  `normalize`: Normalize the scale of each predicitor. (default true when `m > 1`)
-  `span`: The degree of smoothing, typically in [0,1]. Smaller values result in smaller
-      local context in fitting.
-  `degree`: Polynomial degree.
-
-Returns:
-  A fit `LoessModel`.
-
-"""
-function loess(xs::AbstractMatrix{T}, ys::AbstractVector{T};
+function loess(xt::AbstractMatrix{T}, yt::AbstractVector{T};
                normalize::Bool=true,
                span::AbstractFloat=0.75,
                degree::Integer=2) where T<:AbstractFloat
 
-    if size(xs, 1) != size(ys, 1)
+    if size(xt, 1) != size(yt, 1)
         throw(DimensionMismatch("Predictor and response arrays must of the same length"))
     end
+    
+    ivar = findall(.!isnan.(xt))
+    xs = xt[ivar]
+    ys = yt[ivar]
 
     n, m = size(xs)
     q = ceil(Int, (span * n))
@@ -105,6 +178,7 @@ function loess(xs::AbstractMatrix{T}, ys::AbstractVector{T};
     LoessModel{T}(xs, ys, bs, verts, kdtree)
 end
 
+# +
 loess(xs::AbstractVector{T}, ys::AbstractVector{T}; kwargs...) where {T<:AbstractFloat} =
     loess(reshape(xs, (length(xs), 1)), ys; kwargs...)
 
@@ -192,7 +266,8 @@ tricubic(u) = (1 - u^3)^3
 """
     evalpoly(xs,bs)
 
-Evaluate a multivariate polynomial with coefficients `bs` at `xs`.  `bs` should be of length
+Evaluate a multivariate polynomial with coefficients `bs` at `xs`.  
+`bs` should be of length
 `1+length(xs)*d` where `d` is the degree of the polynomial.
 
     bs[1] + xs[1]*bs[2] + xs[1]^2*bs[3] + ... + xs[end]^d*bs[end]
@@ -214,29 +289,20 @@ function evalpoly(xs, bs)
     y
 end
 
-"""
-    tnormalize!(x,q)
 
-Default normalization procedure for predictors.
+# -
 
-This simply normalizes by the mean of everything between the 10th an 90th percentiles.
+plot(sol, vars=(1))
+scatter!(sol.t, y[1,:], markersize=2)
 
-Args:
-  `xs`: a matrix of predictors
-  `q`: cut the ends of at quantiles `q` and `1-q`
+# +
+model = loess(sol.t, y[1,:])
 
-Modifies:
-  `xs`
-"""
-function tnormalize!(xs::AbstractMatrix{T}, q::T=0.1) where T <: AbstractFloat
-    n, m = size(xs)
-    cut = ceil(Int, (q * n))
-    for j in 1:m
-        tmp = sort!(xs[:,j])
-        xs[:,j] ./= mean(tmp[cut+1:n-cut])
-    end
-    xs
-end
+ys = predict(model, sol.t)
+# -
 
 
-end
+plot( sol.t, ys)
+scatter!( sol.t, y[1,:], markersize=2)
+
+

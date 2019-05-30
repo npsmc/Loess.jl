@@ -5,3 +5,8 @@ Manifest.toml
 docs/build/
 docs/site/
 docs/Manifest.toml
+*.ipynb
+notebooks/.ipynb_checkpoints/loess1d-checkpoint.jl
+notebooks/.ipynb_checkpoints/test_lorenz63-checkpoint.jl
+notebooks/.ipynb_checkpoints/test_sinus-checkpoint.jl
+notebooks/.ipynb_checkpoints/test_sinus-Copy1-checkpoint.jl
