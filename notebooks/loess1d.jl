@@ -72,5 +72,3 @@ yest = lowess(x, y, f=f, iter=1);
 
 scatter(x, y; markersize=2, label=:noisy)
 plot!(x, yest; line=(3,:red),label=:pred)
-
-

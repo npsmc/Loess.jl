@@ -1,15 +1,18 @@
-module Loess
+import Distances.euclidean
 
-include("loess1d.jl")
+using Statistics
 
-mutable struct MultivariateLoessModel{T <: AbstractFloat}
+export loess, predict
 
-    xs::AbstractMatrix{T}       # An n by m predictor matrix containing n observations from m predictors
-    ys::AbstractMatrix{T}       # A length n response vector
-    bs::Matrix{T}               # Least squares coefficients
+include("kd.jl")
+
+
+mutable struct LoessModel{T <: AbstractFloat}
+    xs::AbstractMatrix{T} # An n by m predictor matrix containing n observations from m predictors
+    ys::AbstractVector{T} # A length n response vector
+    bs::Matrix{T}         # Least squares coefficients
     verts::Dict{Vector{T}, Int} # kd-tree vertexes mapped to indexes
     kdtree::KDTree{T}
-
 end
 
 """
@@ -29,7 +32,7 @@ Returns:
   A fit `LoessModel`.
 
 """
-function loess(xs::AbstractMatrix{T}, ys::AbstractMatrix{T};
+function loess(xs::AbstractMatrix{T}, ys::AbstractVector{T};
                normalize::Bool=true,
                span::AbstractFloat=0.75,
                degree::Integer=2) where T<:AbstractFloat
@@ -97,11 +100,16 @@ function loess(xs::AbstractMatrix{T}, ys::AbstractMatrix{T};
         bs[k,:] = us \ vs
     end
 
-    MultivariateLoessModel{T}(xs, ys, bs, verts, kdtree)
+    LoessModel{T}(xs, ys, bs, verts, kdtree)
 end
 
-loess(xs::AbstractVector{T}, ys::AbstractMatrix{T}; kwargs...) where {T<:AbstractFloat} =
+loess(xs::AbstractVector{T}, ys::AbstractVector{T}; kwargs...) where {T<:AbstractFloat} =
     loess(reshape(xs, (length(xs), 1)), ys; kwargs...)
+
+function loess(xs::AbstractArray{T,N}, ys::AbstractVector{S}; kwargs...) where {T,N,S}
+    R = float(promote_type(T, S))
+    loess(convert(AbstractArray{R,N}, xs), convert(AbstractVector{R}, ys); kwargs...)
+end
 
 
 # Predict response values from a trained loess model and predictor observations.
@@ -117,12 +125,12 @@ loess(xs::AbstractVector{T}, ys::AbstractMatrix{T}; kwargs...) where {T<:Abstrac
 # Returns:
 #   A length n' vector of predicted response values.
 #
-function predict(model::MultivariateLoessModel{T}, z::T) where T <: AbstractFloat
+function predict(model::LoessModel{T}, z::T) where T <: AbstractFloat
     predict(model, T[z])
 end
 
 
-function predict(model::MultivariateLoessModel{T}, zs::AbstractVector{T}) where T <: AbstractFloat
+function predict(model::LoessModel{T}, zs::AbstractVector{T}) where T <: AbstractFloat
     m = size(model.xs, 2)
 
     # in the univariate case, interpret a non-singleton zs as vector of
@@ -155,7 +163,7 @@ function predict(model::MultivariateLoessModel{T}, zs::AbstractVector{T}) where 
 end
 
 
-function predict(model::MultivariateLoessModel{T}, zs::AbstractMatrix{T}) where T <: AbstractFloat
+function predict(model::LoessModel{T}, zs::AbstractMatrix{T}) where T <: AbstractFloat
     ys = Array{T}(undef, size(zs, 1))
     for i in 1:size(zs, 1)
         # the vec() here is not necessary on 0.5 anymore
@@ -164,4 +172,66 @@ function predict(model::MultivariateLoessModel{T}, zs::AbstractMatrix{T}) where 
     ys
 end
 
+"""
+    tricubic(u)
+
+Tricubic weight function.
+
+Args:
+  `u`: Distance between 0 and 1
+
+Returns:
+  A weighting of the distance `u`
+
+"""
+tricubic(u) = (1 - u^3)^3
+
+
+"""
+    evalpoly(xs,bs)
+
+Evaluate a multivariate polynomial with coefficients `bs` at `xs`.  `bs` should be of length
+`1+length(xs)*d` where `d` is the degree of the polynomial.
+
+    bs[1] + xs[1]*bs[2] + xs[1]^2*bs[3] + ... + xs[end]^d*bs[end]
+
+"""
+function evalpoly(xs, bs)
+    m = length(xs)
+    degree = div(length(bs) - 1, m)
+    y = bs[1]
+    for i in 1:m
+        x = xs[i]
+        xx = x
+        y += xx * bs[1 + (i-1)*degree + 1]
+        for l in 2:degree
+            xx *= x
+            y += xx * bs[1 + (i-1)*degree + l]
+        end
+    end
+    y
+end
+
+"""
+    tnormalize!(x,q)
+
+Default normalization procedure for predictors.
+
+This simply normalizes by the mean of everything between the 10th an 90th percentiles.
+
+Args:
+  `xs`: a matrix of predictors
+  `q`: cut the ends of at quantiles `q` and `1-q`
+
+Modifies:
+  `xs`
+"""
+function tnormalize!(xs::AbstractMatrix{T}, q::T=0.1) where T <: AbstractFloat
+    n, m = size(xs)
+    cut = ceil(Int, (q * n))
+    for j in 1:m
+        tmp = sort!(xs[:,j])
+        xs[:,j] ./= mean(tmp[cut+1:n-cut])
+    end
+    xs
 end
