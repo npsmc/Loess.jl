@@ -7,7 +7,7 @@
 #       extension: .jl
 #       format_name: light
 #       format_version: '1.4'
-#       jupytext_version: 1.1.3
+#       jupytext_version: 1.1.6
 #   kernelspec:
 #     display_name: Julia 1.1.1
 #     language: julia
@@ -19,17 +19,14 @@ using NearestNeighbors
 
 #Initializing noisy non linear data
 x = range(0,stop=1,length=100) |> collect
-y = hcat([sin(t * 3π/2 ) for t in x],
-         [cos(t * 3π/2 ) for t in x])' |> collect
+y = sin.(x .* 3π/2 )
 σ = 0.1
-d = MvNormal([0,0], σ .* Matrix(I,2,2))
+d = MvNormal([0], σ .* Matrix(I,1,1))
 n = length(x)
-y_noise = y .+ rand(d,n)
+y_noise = y .+ rand(d,n)';
 
-scatter( x, y_noise[1,:])
-scatter!(x, y_noise[2,:])
-plot!(x, y[1,:])
-plot!(x, y[2,:])
+scatter( x, y_noise)
+plot!(x, y)
 
 # +
 """
@@ -43,14 +40,14 @@ returns the estimated (smooth) values of y.
 The kernel function is the bell shaped function with parameter tau. 
 Larger tau will result in a smoother curve. 
 """
-function lowess_bell_shape_kern(x, k = 3)
+function lowess(x, k = 3)
     
     m = last(size(x))
     kdt = KDTree(x; leafsize = 10)
     idxs, dists = knn(kdt, x, k, true)
     yest = zeros(Float64, m)
     
-    w = (1 .- w.^3) .^ 3
+    w = (1 .- dists.^3) .^ 3
     weights = zeros(Float64, m)
     
     #Looping through all x-points
@@ -67,3 +64,6 @@ function lowess_bell_shape_kern(x, k = 3)
     yest
     
 end
+# -
+
+
