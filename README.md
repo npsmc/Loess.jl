@@ -16,11 +16,11 @@ function.
 using Loess
 
 xs = 10 .* rand(100)
-ys = sin(xs) .+ 0.5 * rand(100)
+ys = sin.(xs) .+ 0.5 * rand(100)
 
 model = loess(xs, ys)
 
-us = collect(minimum(xs):0.1:maximum(xs))
+us = range(extrema(xs)...; step = 0.1)
 vs = predict(model, us)
 
 using Gadfly
