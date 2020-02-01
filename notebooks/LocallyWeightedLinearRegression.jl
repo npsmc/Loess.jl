@@ -6,12 +6,12 @@
 #     text_representation:
 #       extension: .jl
 #       format_name: light
-#       format_version: '1.4'
-#       jupytext_version: 1.2.1
+#       format_version: '1.5'
+#       jupytext_version: 1.3.3
 #   kernelspec:
-#     display_name: Julia 1.2.0
+#     display_name: Julia 1.3.0
 #     language: julia
-#     name: julia-1.2
+#     name: julia-1.3
 # ---
 
 # https://xavierbourretsicotte.github.io/loess.html
@@ -63,5 +63,7 @@ y_noise = y .+ noise
 ypred = lowess_1d(x, y_noise; tau = 1e-2)
 plot(x, ypred; label="lowess")
 scatter!(x, y_noise)
+
+
 
 

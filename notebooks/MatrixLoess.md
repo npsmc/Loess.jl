@@ -5,16 +5,20 @@ jupyter:
     text_representation:
       extension: .md
       format_name: markdown
-      format_version: '1.1'
-      jupytext_version: 1.1.6
+      format_version: '1.2'
+      jupytext_version: 1.3.3
   kernelspec:
-    display_name: Julia 1.1.1
+    display_name: Julia 1.3.0
     language: julia
-    name: julia-1.1
+    name: julia-1.3
 ---
 
 ```julia
 using Plots, NearestNeighbors, LinearAlgebra
+```
+
+```julia
+import Pkg; Pkg.add("NearestNeighbors")
 ```
 
 ```julia
